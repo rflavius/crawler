@@ -18,7 +18,8 @@
 class Console_Model_Crawler
 {
 	protected static $maxRequests = 10;
-	private static $referrer = '';
+	protected $_crawler;
+	private static $tmp_col = 'crawler_done';
 	
 	/**
 	 * Constructor
@@ -31,6 +32,138 @@ class Console_Model_Crawler
 	{
 		// here we will start the new class based on PDO
 		$this->db = Zend_Registry::get('database');
+	}
+	
+	/**
+	 * here we check if we have any process ready to be executed
+	 * @access public
+	 * @param optional int $websiteID
+	 * @return boolean
+	 */
+	public function ready($websiteID = 0)
+	{
+		$select = $this->db->select()
+							->from(array('a' => 'processes'), array('a.id', 'a.status', 'a.website_id'))
+							->leftJoin(array('b' => 'websites'), 'a.website_id = b.id', array('b.url', 'b.interface'))
+							->where('a.status = ?', 'ready')
+							->where('((TIME_TO_SEC(NOW()) - TIME_TO_SEC(a.date))%a.run_time) >= (a.run_time/2)');
+		if(!empty($websiteID)) $select->where('a.website_id = ?', (int)$websiteID);
+		$result = $this->db->fetchRow($select);
+		if(!empty($result))
+		{
+			//file_put_contents(APPLICATION_PATH.'/log.txt', "\n".date('Y-m-d H:i:s').' :: '.implode(" => ",$result), FILE_APPEND);
+			// store the process into object property
+			$this->_crawler = $result;
+			// update process status
+			$data = array('status' => 'in progress');
+			$where = array('id = ?' => $result['id']);
+			$this->updateProcess($data, $where);
+			return true;
+		}
+		else return false;
+	}
+	
+	public function run()
+	{
+		print_r($this->_crawler);exit;
+		// create temporary column if needed for the pages
+		$this->createTmpCol('pages');
+		
+		
+		
+		if($this->countPages())
+		{
+			
+		}
+		
+		
+	}
+	
+	/**
+	 * here we generate the crawler process tree
+	 * @access public
+	 * @param none
+	 * @throws Exception
+	 * @return boolean
+	 */
+	public function createProcessTree()
+	{
+		try
+		{
+			$websites = $this->listWebsites();
+			if(count($websites)>0)
+			{
+				foreach ($websites as $key => $value)
+				{
+					$data = array('website_id' => $value['id'], 'date' => new Zend_Db_Expr('NOW()')); // optional you can add the run_time which as default is set to 60sec
+					$this->addProcess($data);
+				}
+			}
+			else throw new Exception("There is NO websites to crawl.");
+		}
+		catch (Exception $e)
+		{
+			echo $e->getMessage().PHP_EOL;
+			return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * add new record into crawler processes tree
+	 * @access private
+	 * @param array $data
+	 * @return void
+	 */
+	private function addProcess($data)
+	{
+		$this->db->insert('processes', $data);
+	}
+	
+	/**
+	 * here we list the websites we want to crawl
+	 * @access public
+	 * @param optional array $where
+	 * @return array
+	 */
+	public function listWebsites($where = array())
+	{
+		$select = $this->db->select()
+							->from('websites');
+		if(!empty($where))
+		{
+			foreach ($where as $key => $value)
+			{
+				$select->where($key, $value);
+			}
+		}
+		return $this->db->fetchAll($select);
+	}
+	
+	/**
+	 * add temporary column for dbTable if needed
+	 * @access protected
+	 * @param string $db_table
+	 * @return void
+	 */
+	protected function createTmpCol($db_table)
+	{
+		if (count($this->db->query("SHOW COLUMNS FROM $db_table LIKE '".self::$tmp_col."'")->fetchAll())==0)
+		{
+			$this->db->query("ALTER TABLE $db_table ADD ".self::$tmp_col." ENUM('Y','N') NOT NULL DEFAULT 'N'");
+		}
+	}
+	
+	/**
+	 * update crawler process record
+	 * @access public
+	 * @param array $data
+	 * @param array $where
+	 * @return void
+	 */
+	public function updateProcess($data, $where)
+	{
+		$this->db->update('processes', $data, $where);
 	}
 	
 	/**

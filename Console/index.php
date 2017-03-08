@@ -19,6 +19,9 @@ if(!defined('STDIN'))
 
 // Define PATH's (absolute paths)  to configuration and DotKernel  directories
 $rootPath = realpath(dirname(__FILE__) . "/..");
+chdir($rootPath);
+set_include_path(implode(PATH_SEPARATOR, array($rootPath . '/library', get_include_path())));
+
 defined('CONFIGURATION_PATH') || define('CONFIGURATION_PATH', $rootPath.'/configs');
 
 // Define application path
